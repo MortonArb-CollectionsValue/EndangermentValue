@@ -17,7 +17,7 @@
 ################################################################################
 
 rm(list=ls())
-  my.packages <- c('tidyverse')
+  my.packages <- c('tidyverse','PerformanceAnalytics')
   select <- dplyr::select
 # install.packages (my.packages) #Turn on to install current versions
 lapply(my.packages, require, character.only=TRUE)
@@ -28,6 +28,25 @@ lapply(my.packages, require, character.only=TRUE)
 ################################################################################
 
 main_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value"
+
+################################################################################
+# Functions
+################################################################################
+
+##### FROM SEAN HOBAN ####
+
+#Look at correlations among columns
+#This function calculates correlations, outputs top correlated metrics
+col_corr<-function(df_matrix){
+	print("Correlation among <<measures>> themselves")
+	print(sort(rowSums(cor(df_matrix[,cols_data],use="complete.obs")>.80),decreasing=T)[1:4])
+	print(sort(rowMeans(cor(df_matrix[,cols_data],use="complete.obs")),decreasing=T)[1:4])
+	print("Correlation among <<ranks>>- when put in order from measures")
+	print(sort(rowSums(cor(apply(df_matrix[,cols_data],2,rank))>.80),decreasing=T)[1:4])
+	print(sort(rowMeans(cor(apply(df_matrix[,cols_data],2,rank))),decreasing=T)[1:4])
+	chart.Correlation(df_matrix[,cols_data], histogram = TRUE, method = "pearson")
+	#To also add the one on ranking?
+}
 
 ################################################################################
 # MANUAL CHANGES REQUIRED: Assign values for scoring
@@ -71,6 +90,10 @@ df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
   header = T, na.strings = c("","NA"))
 df <- df_raw
 
+# calculate correlations among exsitu data columns (raw values)
+cols_data <- 5:8
+col_corr(df)
+
 # convert qualitative values to scores using ref vals created above
 for(i in 1:nrow(vals)){
   df[df == vals[i,1]] <- vals[i,2]
@@ -78,6 +101,10 @@ for(i in 1:nrow(vals)){
 # make everything numeric except species name
 df[,2:ncol(df)] <- df[,2:ncol(df)] %>% mutate_if(is.character,as.numeric)
 str(df)
+
+# calculate correlations among all columns once scores are filled in
+cols_data <- 2:12
+col_corr(df)
 
 ## convert quantitative values to scores using equations
   # Collections-based columns:
@@ -181,6 +208,13 @@ vals <- data.frame(categories,category_scores)
 for(i in 1:nrow(vals)){
   df2[df2 == vals[i,1]] <- vals[i,2]
 }
+
+  # calculate correlations among Potter columns that have scores
+have_Potter_val <- df2[which(df2$climate_change_score!="999"),]
+have_Potter_val <- have_Potter_val %>% mutate_if(is.character,as.numeric)
+cols_data <- 2:5
+col_corr(have_Potter_val)
+
     ### for categorical cols, replace N/A with mean score for the col
 df2[df2[,3]=="999",3] <- round(mean(as.numeric(df2[df2[,3]!="999",3])),3)
 df2[df2[,5]=="999",5] <- round(mean(as.numeric(df2[df2[,5]!="999",5])),5)
@@ -242,67 +276,3 @@ str(df)
 # write file
 write.csv(df, file.path(main_dir,"EndangermentMatrix_SensitivityAnalysis.csv"),
 	row.names = F)
-
-
-
-
-
-
-##### FROM SEAN HOBAN ####
-
-#	RANKING
-
-#One way to actually rank species is to identify those that most frequently are ranked in a given bunch, say in the top 10
-species_ranked1<-data.frame(sp_names_wcoll,rowSums(apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)<10))
-#Another way to do actually rank species is to take the mean across rows in the rank order
-species_ranked2<-data.frame(sp_names_wcoll,rowMeans(apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)))
-#species_ranked<-data.frame(sp_names_wcoll,rank(rowMeans(apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank))))
-colnames(species_ranked1)<-c("sp","rank"); colnames(species_ranked2)<-c("sp","rank")
-#It really doesn't matter which approach :)
-cbind(species_ranked1[order(species_ranked1$rank),],species_ranked2[order(species_ranked2$rank,decreasing=T),])
-
-#Geo 10
-species_ranked_geo10<-data.frame(sp_names_wcoll,apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)[,1])
-#Geo 100
-species_ranked_geo100<-data.frame(sp_names_wcoll,apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)[,4])
-#Eco 10
-species_ranked_eco10<-data.frame(sp_names_wcoll,apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)[,5])
-#Eco USA 50
-species_ranked_ecous50<-data.frame(sp_names_wcoll,apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank)[,10])
-colnames(species_ranked_geo10)<-c("sp","rank-geo10"); colnames(species_ranked_geo100)<-c("sp","rank-geo100")
-colnames(species_ranked_eco10)<-c("sp","rank-eco10"); colnames(species_ranked_ecous50)<-c("sp","rank-ecous50")
-cbind(species_ranked_geo10[order(species_ranked_geo10$rank),],species_ranked_geo100[order(species_ranked_geo100$rank),],
-	species_ranked_eco10[order(species_ranked_eco10$rank),],species_ranked_ecous50[order(species_ranked_ecous50$rank),])
-#Maybe 10 is just too fine scale!!
-
-
-#Trying to figure out if any of the measures are especially bad/ different
-#Look for correlations among columns
-#This function calculates correlations, outputs top correlated metrics
-eco_geo_corr<-function(eg_matrix){
-	print("Correlation among <<measures>> themselves")
-	print(sort(rowSums(cor(eg_matrix[,cols_eco_geo],use="complete.obs")>.80),decreasing=T)[1:4])
-	print(sort(rowMeans(cor(eg_matrix[,cols_eco_geo],use="complete.obs")),decreasing=T)[1:4])
-	print("Correlation among <<ranks>>- when put in order from measures")
-	print(sort(rowSums(cor(apply(eg_matrix[,cols_eco_geo],2,rank))>.80),decreasing=T)[1:4])
-	print(sort(rowMeans(cor(apply(eg_matrix[,cols_eco_geo],2,rank))),decreasing=T)[1:4])
-	chart.Correlation(eg_matrix[,cols_eco_geo], histogram = TRUE, method = "pearson")
-	#To also add the one on ranking?
-}
-eco_geo_corr(eco_geo_results)
-	#Note: Geo10 and Eco10 are most different- not well correlated
-#Correlation among USA species
-eco_geo_results_usa<-eco_geo_results[-which(is.na(eco_geo_results[,9])),]
-eco_geo_corr(eco_geo_results_usa)
-#Correlation just for within rare and not rare sets
-eco_geo_results_LC<-eco_geo_results[eco_geo_results[,ncol(eco_geo_results)]=="LC",]
-eco_geo_corr(eco_geo_results_LC)
-	#Note: For geo10 and ecousa10, LC low correlation (probably too fine scale  for LC
-eco_geo_results_TH<-eco_geo_results[eco_geo_results[,ncol(eco_geo_results)]!="LC",]
-eco_geo_corr(eco_geo_results_TH)
-	#Note: here it is eco10 and eco50 low correlation (probably too fine scale  for LC
-#OVERALL: geo50, geo100, eco50, ecoUS50 have highest overall
-
-#But should probably find highest pairs and drop one of each pair... iteratively
-#This applies the function to subsets of: all, US, LC, Threatened
-lapply(list(eco_geo_results,eco_geo_results_usa,eco_geo_results_LC,eco_geo_results_TH),eco_geo_corr)

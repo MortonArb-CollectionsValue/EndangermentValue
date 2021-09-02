@@ -16,12 +16,13 @@
 # Load libraries
 ################################################################################
 
-rm(list=ls())
-  my.packages <- c('tidyverse','PerformanceAnalytics')
+# this little code chunk is from Shannon M Still !
+  rm(list=ls())
+  my.packages <- c('tidyverse','PerformanceAnalytics','ggplot2','ggrepel')
   select <- dplyr::select
-# install.packages (my.packages) #Turn on to install current versions
-lapply(my.packages, require, character.only=TRUE)
-  rm(my.packages)
+  # install.packages (my.packages) #Turn on to install current versions
+  lapply(my.packages, require, character.only=TRUE)
+    rm(my.packages)
 
 ################################################################################
 # Set working directory
@@ -33,7 +34,7 @@ main_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value"
 # Functions
 ################################################################################
 
-##### FROM SEAN HOBAN ####
+##### FUNCTION FROM SEAN HOBAN ####
 
 #Look at correlations among columns
 #This function calculates correlations, outputs top correlated metrics
@@ -76,7 +77,7 @@ log_cols <- c(5,6,7,8)
 quantile_cols <- c(9,11)
 
 ## assign weight to each column (must all add up to 1)
-colnames(df)
+#colnames(df)
 col_wt <- c(0, 0.05, 0.2, 0.05, 0.1, 0.1, 0.2, 0.1, 0.1, 0, 0.1, 0)
 if(sum(col_wt)!=1){ print("ERROR: !!THE COLUMN WEIGHTS MUST ADD UP TO ONE!!")}
 print(sum(col_wt))
@@ -276,3 +277,79 @@ str(df)
 # write file
 write.csv(df, file.path(main_dir,"EndangermentMatrix_SensitivityAnalysis.csv"),
 	row.names = F)
+
+
+
+
+
+
+
+
+# set up dataframe for graphing
+tests <- c("A_WeightsAsIs","B_EvenWeights","C_NoPresAbs","D_NoNativity",
+  "E_NoPotter","F_NoOverallPotter","G_NoVulernPotter","H_PotterMeans",
+  "I_NoOverallPotterMeans","J_NoVulernPotterMeans","K_SwapDDVU")
+view_ranks <- data.frame()
+for(i in 1:length(tests)){
+  add <- data.frame(
+    Test = tests[i],
+    Species = df[,1],
+    Rank = df[,(length(tests)+12+i)]) #the number here is the number of columns before totals
+  view_ranks <- rbind(view_ranks,add)
+}
+view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 3))
+head(view_ranks)
+
+# FROM: https://ibecav.github.io/slopegraph/
+MySpecial <- list(
+  # move the x axis labels up top
+  scale_x_discrete(position = "top"),
+  theme_bw(),
+  # Format tweaks
+  # Remove the legend
+  theme(legend.position = "none"),
+  # Remove the panel border
+  theme(panel.border     = element_blank()),
+  # Remove just about everything from the y axis
+  theme(axis.title.y     = element_blank()),
+  theme(axis.text.y      = element_blank()),
+  theme(panel.grid.major.y = element_blank()),
+  theme(panel.grid.minor.y = element_blank()),
+  # Remove a few things from the x axis and increase font size
+  theme(axis.title.x     = element_blank()),
+  theme(panel.grid.major.x = element_blank()),
+  theme(axis.text.x.top      = element_text(size=12)),
+  # Remove x & y tick marks
+  theme(axis.ticks       = element_blank()),
+  # Format title & subtitle
+  theme(plot.title       = element_text(size=14, face = "bold", hjust = 0.5)),
+  theme(plot.subtitle    = element_text(hjust = 0.5))
+)
+
+ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
+  geom_line(aes(color = Species, alpha = 1), size = 1) +
+#  geom_point(aes(color = Type, alpha = .1), size = 4) +
+  #geom_text_repel(data = view_ranks %>% filter(Test == "SwapDDVU"),
+  #                aes(label = Abbr) ,
+  #                hjust = "left",
+  #                fontface = "bold",
+  #                size = 3,
+  #                nudge_x = -.45,
+  #                direction = "y") +
+  #geom_text_repel(data = view_ranks %>% filter(Test == "NoVulernPotterMeans"),
+  #                aes(label = Abbr) ,
+  #                hjust = "right",
+  #                fontface = "bold",
+  #                size = 3,
+  #                nudge_x = .5,
+  #                direction = "y") +
+  geom_label(aes(label = Abbr),
+             size = 2,
+             label.padding = unit(0.02, "lines"),
+             label.size = 0.0) +
+  MySpecial +
+  labs(
+    title = "Sensitivity Analysis: Visualization of Rank Changes in the Endangerment Matrix",
+    #subtitle = "Subtitle",
+    caption = "Code from https://ibecav.github.io/slopegraph/"
+  )

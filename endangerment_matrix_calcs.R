@@ -90,6 +90,35 @@ print(sum(col_wt))
 df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
   header = T, na.strings = c("","NA"))
 df <- df_raw
+spp <- unique(df$species)
+
+  ### add TRY Database (trait) data
+    # read in TRY data
+  trydb <- read_tsv(file.path(main_dir,"TRY_Database_download",
+    "16564_01092021010239","16564.txt")) #2510877
+    # keep just records for target species and traits that have numbers (not
+    #   sure where the other data came from?)
+  try_target <- trydb %>%
+    filter(SpeciesName %in% spp) %>%
+    filter(!is.na(TraitName)) %>%
+    arrange(SpeciesName) #2496
+    # summarize available data
+  try_summary <- data.frame()
+  for(i in 1:length(unique(try_target$DataName))){
+    data_nm <- unique(try_target$DataName)[i]
+    unq_vals <- unique(sort(try_target[
+      which(try_target$DataName==unique(try_target$DataName)[i]),]$OrigValueStr))
+    num_spp <- length(unique(try_target[
+      which(try_target$DataName==unique(try_target$DataName)[i]),]$OrigValueStr))
+    add <- data.frame(
+      DataName = data_nm,
+      num_target_sp = num_spp,
+      unique_values = paste(unq_vals,sep='',collapse='; '))
+    try_summary <- rbind(try_summary,add)
+  }
+    # write file
+  write.csv(try_summary, file.path(main_dir,"TRY_data_summary.csv"),
+    row.names = F)
 
 # calculate correlations among exsitu data columns (raw values)
 cols_data <- 5:8

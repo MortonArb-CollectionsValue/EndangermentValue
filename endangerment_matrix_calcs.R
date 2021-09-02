@@ -18,7 +18,8 @@
 
 # this little code chunk is from Shannon M Still !
   rm(list=ls())
-  my.packages <- c('tidyverse','PerformanceAnalytics','ggplot2','ggrepel')
+  my.packages <- c('tidyverse','PerformanceAnalytics','ggplot2','ggrepel',
+    'data.table')
   select <- dplyr::select
   # install.packages (my.packages) #Turn on to install current versions
   lapply(my.packages, require, character.only=TRUE)
@@ -90,35 +91,46 @@ print(sum(col_wt))
 df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
   header = T, na.strings = c("","NA"))
 df <- df_raw
-spp <- unique(df$species)
 
-  ### add TRY Database (trait) data
+  ########## look at adding TRY Database (trait) data
     # read in TRY data
-  trydb <- read_tsv(file.path(main_dir,"TRY_Database_download",
-    "16564_01092021010239","16564.txt")) #2510877
+  trydb <- fread(file.path(main_dir,"TRY_Database_download",
+    "16564_01092021010239","16564.txt"),
+    header = T, sep = "\t", dec = ".", quote = "", data.table = T)
+    nrow(trydb) #2636596
     # keep just records for target species and traits that have numbers (not
     #   sure where the other data came from?)
+  spp <- unique(df$species)
   try_target <- trydb %>%
     filter(SpeciesName %in% spp) %>%
-    filter(!is.na(TraitName)) %>%
-    arrange(SpeciesName) #2496
+    filter(!is.na(TraitID)) %>%
+    arrange(SpeciesName)
+  nrow(try_target) #2764
+  head(as.data.frame(try_target))
     # summarize available data
   try_summary <- data.frame()
   for(i in 1:length(unique(try_target$DataName))){
-    data_nm <- unique(try_target$DataName)[i]
+    trait_cols <- unique(try_target[,c(11,13)])[i]
     unq_vals <- unique(sort(try_target[
       which(try_target$DataName==unique(try_target$DataName)[i]),]$OrigValueStr))
     num_spp <- length(unique(try_target[
-      which(try_target$DataName==unique(try_target$DataName)[i]),]$OrigValueStr))
+      which(try_target$DataName==unique(try_target$DataName)[i]),]$SpeciesName))
+    which_spp <- unique(sort(try_target[
+      which(try_target$DataName==unique(try_target$DataName)[i]),]$SpeciesName))
     add <- data.frame(
-      DataName = data_nm,
-      num_target_sp = num_spp,
+      TraitName = trait_cols[,1],
+      DataName = trait_cols[,2],
+      percent_target_sp = round(num_spp/length(spp)*100,2),
+      which_target_sp = paste(which_spp,sep='',collapse='; '),
       unique_values = paste(unq_vals,sep='',collapse='; '))
     try_summary <- rbind(try_summary,add)
   }
+  try_summary <- try_summary %>% arrange(TraitName,desc(percent_target_sp))
+  try_summary[,1:3]
     # write file
   write.csv(try_summary, file.path(main_dir,"TRY_data_summary.csv"),
     row.names = F)
+  ##########
 
 # calculate correlations among exsitu data columns (raw values)
 cols_data <- 5:8
@@ -172,6 +184,24 @@ str(df)
 # Calculate total score using all columns
 ################################################################################
 
+# select only columns of interest
+df <- df %>% select(species,rl_category,nativity_to_us,exsitu_sites_plantsearch,
+  exsitu_wz_sites,exsitu_wz_accessions,climate_change_vul_class,
+  pest_disease_vul_class)
+colnames(df)
+# look at correlations for just these selected columns
+cols_data <- 2:8
+col_corr(df)
+  # for each genus
+  gen_df <- df %>% filter(grepl("Malus ",species))
+  col_corr(gen_df)
+  gen_df <- df %>% filter(grepl("Quercus ",species))
+  col_corr(gen_df)
+  gen_df <- df %>% filter(grepl("Tilia ",species))
+  col_corr(gen_df)
+  gen_df <- df %>% filter(grepl("Ulmus ",species))
+  col_corr(gen_df)
+
 # create vector of column weights if all are weighted evenly
 col_wt_even <- rep(x = 1/(ncol(df)-1), times = ncol(df))
 
@@ -202,26 +232,26 @@ df <- cbind(df,total_WeightsAsIs)
 total_EvenWeights <- calc_total_score(col_use,df,col_wt_even)
 df <- cbind(df,total_EvenWeights)
 
-  # drop presence/absence
-col_use <- c(3:12)
-total_NoPresAbs <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoPresAbs)
   # drop nativity
-col_use <- c(2:3,5:12)
+col_use <- c(2,4:8)
 total_NoNativity <- calc_total_score(col_use,df,col_wt_even)
 df <- cbind(df,total_NoNativity)
   # drop Potter
-col_use <- c(2:8)
+col_use <- c(2:6)
 total_NoPotter <- calc_total_score(col_use,df,col_wt_even)
 df <- cbind(df,total_NoPotter)
   # drop Potter overall scores only
-col_use <- c(2:8,10,12)
-total_NoOverallPotter <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoOverallPotter)
+#col_use <- c(2:8,10,12)
+#total_NoOverallPotter <- calc_total_score(col_use,df,col_wt_even)
+#df <- cbind(df,total_NoOverallPotter)
   # drop Potter vulnerability categories only
-col_use <- c(2:9,11)
-total_NoVulernPotter <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoVulernPotter)
+#col_use <- c(2:9,11)
+#total_NoVulernPotter <- calc_total_score(col_use,df,col_wt_even)
+#df <- cbind(df,total_NoVulernPotter)
+  # drop wz accessions
+col_use <- c(2:5,7:8)
+total_NoWZAcc <- calc_total_score(col_use,df,col_wt_even)
+df <- cbind(df,total_NoWZAcc)
 
   # use mean for species with no Potter data
     # select potter columns from raw data
@@ -240,10 +270,10 @@ for(i in 1:nrow(vals)){
 }
 
   # calculate correlations among Potter columns that have scores
-have_Potter_val <- df2[which(df2$climate_change_score!="999"),]
-have_Potter_val <- have_Potter_val %>% mutate_if(is.character,as.numeric)
-cols_data <- 2:5
-col_corr(have_Potter_val)
+#have_Potter_val <- df2[which(df2$climate_change_score!="999"),]
+#have_Potter_val <- have_Potter_val %>% mutate_if(is.character,as.numeric)
+#cols_data <- 2:5
+#col_corr(have_Potter_val)
 
     ### for categorical cols, replace N/A with mean score for the col
 df2[df2[,3]=="999",3] <- round(mean(as.numeric(df2[df2[,3]!="999",3])),3)

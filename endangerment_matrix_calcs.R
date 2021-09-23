@@ -30,6 +30,7 @@
 ################################################################################
 
 main_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value"
+chart_folder <- "corr_charts"
 
 ################################################################################
 # Functions
@@ -39,7 +40,7 @@ main_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value"
 
 #Look at correlations among columns
 #This function calculates correlations, outputs top correlated metrics
-col_corr<-function(df_matrix){
+col_corr<-function(df_matrix,cols_data){
 	print("Correlation among <<measures>> themselves")
 	print(sort(rowSums(cor(df_matrix[,cols_data],use="complete.obs")>.80),decreasing=T)[1:4])
 	print(sort(rowMeans(cor(df_matrix[,cols_data],use="complete.obs")),decreasing=T)[1:4])
@@ -50,316 +51,9 @@ col_corr<-function(df_matrix){
 	#To also add the one on ranking?
 }
 
-################################################################################
-# MANUAL CHANGES REQUIRED: Assign values for scoring
-################################################################################
+####### VISUALIZATION FROM https://ibecav.github.io/slopegraph/ ######
 
-## create dataframe for assigning scores to categorical columns
-categories <- c("AB","PR",
-                "EW","CR","EN","DD","VU","NT","LC","NE?",
-                "Y","N",
-                "C-A","C-B","C-C","C-D","C-E1","C-E2","C-E3","C-E4",
-                "P-A1","P-A2","P-A3","P-B","P-A4","P-C","P-D","P-E",
-                "N/A")
-category_scores <- c(1, 0,
-                    1, 0.835, 0.668, 0.501, 0.334, 0.167, 0, 0,
-                    1, 0,
-                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
-                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
-                    0)
-vals <- data.frame(categories,category_scores)
-vals
-
-## create vector for assigning scores to quartiles 1-4
-quartile_scores <- c(0, 0, 0.5, 1)
-
-## select columns that need reverse log transformation and quantile scoring
-log_cols <- c(5,6,7,8)
-quantile_cols <- c(9,11)
-
-## assign weight to each column (must all add up to 1)
-#colnames(df)
-col_wt <- c(0, 0.05, 0.2, 0.05, 0.1, 0.1, 0.2, 0.1, 0.1, 0, 0.1, 0)
-if(sum(col_wt)!=1){ print("ERROR: !!THE COLUMN WEIGHTS MUST ADD UP TO ONE!!")}
-print(sum(col_wt))
-
-################################################################################
-# Set up endangerment matrix scoring
-################################################################################
-
-# read in endangerment matrix
-df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
-  header = T, na.strings = c("","NA"))
-df <- df_raw
-
-  ########## look at adding TRY Database (trait) data
-    # read in TRY data
-  trydb <- fread(file.path(main_dir,"TRY_Database_download",
-    "16564_01092021010239","16564.txt"),
-    header = T, sep = "\t", dec = ".", quote = "", data.table = T)
-    nrow(trydb) #2636596
-    # keep just records for target species and traits that have numbers (not
-    #   sure where the other data came from?)
-  spp <- unique(df$species)
-  try_target <- trydb %>%
-    filter(SpeciesName %in% spp) %>%
-    filter(!is.na(TraitID)) %>%
-    arrange(SpeciesName)
-  nrow(try_target) #2764
-  head(as.data.frame(try_target))
-    # summarize available data
-  try_summary <- data.frame()
-  for(i in 1:length(unique(try_target$DataName))){
-    trait_cols <- unique(try_target[,c(11,13)])[i]
-    unq_vals <- unique(sort(try_target[
-      which(try_target$DataName==unique(try_target$DataName)[i]),]$OrigValueStr))
-    num_spp <- length(unique(try_target[
-      which(try_target$DataName==unique(try_target$DataName)[i]),]$SpeciesName))
-    which_spp <- unique(sort(try_target[
-      which(try_target$DataName==unique(try_target$DataName)[i]),]$SpeciesName))
-    add <- data.frame(
-      TraitName = trait_cols[,1],
-      DataName = trait_cols[,2],
-      percent_target_sp = round(num_spp/length(spp)*100,2),
-      which_target_sp = paste(which_spp,sep='',collapse='; '),
-      unique_values = paste(unq_vals,sep='',collapse='; '))
-    try_summary <- rbind(try_summary,add)
-  }
-  try_summary <- try_summary %>% arrange(TraitName,desc(percent_target_sp))
-  try_summary[,1:3]
-    # write file
-  write.csv(try_summary, file.path(main_dir,"TRY_data_summary.csv"),
-    row.names = F)
-  ##########
-
-# calculate correlations among exsitu data columns (raw values)
-cols_data <- 5:8
-col_corr(df)
-
-# convert qualitative values to scores using ref vals created above
-for(i in 1:nrow(vals)){
-  df[df == vals[i,1]] <- vals[i,2]
-}
-# make everything numeric except species name
-df[,2:ncol(df)] <- df[,2:ncol(df)] %>% mutate_if(is.character,as.numeric)
-str(df)
-
-# calculate correlations among all columns once scores are filled in
-cols_data <- 2:12
-col_corr(df)
-
-## convert quantitative values to scores using equations
-  # Collections-based columns:
-  #   Log-transformed then scaled in reverse from 1 (no collections) to 0
-  #   (max num collections across all species)
-for(i in 1:length(log_cols)){
-  ln_max <- max(log(df[,log_cols[i]]+1))
-  ln_min <- min(log(df[,log_cols[i]]+1))
-  for(j in 1:nrow(df)){
-    df[j,log_cols[i]] <- 1-((log(df[j,log_cols[i]]+1)-ln_min)/(ln_max-ln_min))
-  }
-}
-  # Climate change and pest/disease score columns:
-  #   use scores entered at the beginning of the script
-for(i in 1:length(quantile_cols)){
-  has_val <- df[,quantile_cols[i]]>0
-  quartiles <- quantile(df[has_val,quantile_cols[i]])
-  print(quartiles)
-  print(mean(df[has_val,quantile_cols[i]]))
-  for(j in 1:nrow(df)){
-    if (df[j,quantile_cols[i]]>=quartiles[4]){
-      df[j,quantile_cols[i]] <- quartile_scores[4]
-    } else if (df[j,quantile_cols[i]]>=quartiles[3] & df[j,quantile_cols[i]]<quartiles[4]){
-      df[j,quantile_cols[i]] <- quartile_scores[3]
-    } else if (df[j,quantile_cols[i]]>=quartiles[2] & df[j,quantile_cols[i]]<quartiles[3]){
-      df[j,quantile_cols[i]] <- quartile_scores[2]
-    } else if (df[j,quantile_cols[i]]<quartiles[2]){
-      df[j,quantile_cols[i]] <- quartile_scores[1]
-    }
-  }
-}
-str(df)
-
-################################################################################
-# Calculate total score using all columns
-################################################################################
-
-# select only columns of interest
-df <- df %>% select(species,rl_category,nativity_to_us,exsitu_sites_plantsearch,
-  exsitu_wz_sites,exsitu_wz_accessions,climate_change_vul_class,
-  pest_disease_vul_class)
-colnames(df)
-# look at correlations for just these selected columns
-cols_data <- 2:8
-col_corr(df)
-  # for each genus
-  gen_df <- df %>% filter(grepl("Malus ",species))
-  col_corr(gen_df)
-  gen_df <- df %>% filter(grepl("Quercus ",species))
-  col_corr(gen_df)
-  gen_df <- df %>% filter(grepl("Tilia ",species))
-  col_corr(gen_df)
-  gen_df <- df %>% filter(grepl("Ulmus ",species))
-  col_corr(gen_df)
-
-# create vector of column weights if all are weighted evenly
-col_wt_even <- rep(x = 1/(ncol(df)-1), times = ncol(df))
-
-# calculate total score for each species
-  ## FUNCTION
-calc_total_score <- function(selected_cols,df,col_wt){
-  total_score <- vector(mode="numeric", length=nrow(df))
-  for(i in 1:nrow(df)){
-    temp <- 0
-    for(j in 1:length(selected_cols)){
-      temp <- sum(temp, df[i,selected_cols[j]]*col_wt[selected_cols[j]])
-    }
-    total_score[i] <- temp*100
-  }
-  return(total_score)
-}
-  ## calculate using all columns
-col_use <- c(2:12)
-total_WeightsAsIs <- calc_total_score(col_use,df,col_wt)
-df <- cbind(df,total_WeightsAsIs)
-
-################################################################################
-# Sensitivity analysis
-################################################################################
-
-# calculate score after individually dropping columns we're unsure about
-  # all columns, even weights
-total_EvenWeights <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_EvenWeights)
-
-  # drop nativity
-col_use <- c(2,4:8)
-total_NoNativity <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoNativity)
-  # drop Potter
-col_use <- c(2:6)
-total_NoPotter <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoPotter)
-  # drop Potter overall scores only
-#col_use <- c(2:8,10,12)
-#total_NoOverallPotter <- calc_total_score(col_use,df,col_wt_even)
-#df <- cbind(df,total_NoOverallPotter)
-  # drop Potter vulnerability categories only
-#col_use <- c(2:9,11)
-#total_NoVulernPotter <- calc_total_score(col_use,df,col_wt_even)
-#df <- cbind(df,total_NoVulernPotter)
-  # drop wz accessions
-col_use <- c(2:5,7:8)
-total_NoWZAcc <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_NoWZAcc)
-
-  # use mean for species with no Potter data
-    # select potter columns from raw data
-df2 <- df_raw[,c(1,9:12)]
-    # create categories again but with N/A = 999
-categories <- c("C-A","C-B","C-C","C-D","C-E1","C-E2","C-E3","C-E4",
-                "P-A1","P-A2","P-A3","P-B","P-A4","P-C","P-D","P-E",
-                "N/A")
-category_scores <- c(1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
-                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
-                    999)
-vals <- data.frame(categories,category_scores)
-    # replace categories with scores
-for(i in 1:nrow(vals)){
-  df2[df2 == vals[i,1]] <- vals[i,2]
-}
-
-  # calculate correlations among Potter columns that have scores
-#have_Potter_val <- df2[which(df2$climate_change_score!="999"),]
-#have_Potter_val <- have_Potter_val %>% mutate_if(is.character,as.numeric)
-#cols_data <- 2:5
-#col_corr(have_Potter_val)
-
-    ### for categorical cols, replace N/A with mean score for the col
-df2[df2[,3]=="999",3] <- round(mean(as.numeric(df2[df2[,3]!="999",3])),3)
-df2[df2[,5]=="999",5] <- round(mean(as.numeric(df2[df2[,5]!="999",5])),5)
-    # make everything numeric except species name
-df2[,2:ncol(df2)] <- df2[,2:ncol(df2)] %>% mutate_if(is.character,as.numeric); str(df2)
-    # convert quantitative cols to scores (0-1) using quartiles
-quantile_cols <- c(2,4)
-for(i in 1:length(quantile_cols)){
-  has_val <- df2[,quantile_cols[i]]<100
-  quartiles <- quantile(df2[has_val,quantile_cols[i]])
-    ### for quantitative cols, replace N/A with mean value for the col
-  df2[!has_val,quantile_cols[i]] <- mean(df2[has_val,quantile_cols[i]])
-  for(j in 1:nrow(df2)){
-    if (df2[j,quantile_cols[i]]>=quartiles[4]){
-      df2[j,quantile_cols[i]] <- quartile_scores[4]
-    } else if (df2[j,quantile_cols[i]]>=quartiles[3] & df2[j,quantile_cols[i]]<quartiles[4]){
-      df2[j,quantile_cols[i]] <- quartile_scores[3]
-    } else if (df2[j,quantile_cols[i]]>=quartiles[2] & df2[j,quantile_cols[i]]<quartiles[3]){
-      df2[j,quantile_cols[i]] <- quartile_scores[2]
-    } else if (df2[j,quantile_cols[i]]<quartiles[2]){
-      df2[j,quantile_cols[i]] <- quartile_scores[1]
-    }
-  }
-}
-    # add new potter scores to other data
-df2 <- cbind(df[,1:8],df2[,2:5])
-df2 <- cbind(df2,df[,13:19])
-str(df2)
-    # calculate total scores
-col_use <- c(2:12)
-total_PotterMeans <- calc_total_score(col_use,df2,col_wt_even)
-df <- cbind(df,total_PotterMeans)
-  # drop Potter overall scores only
-col_use <- c(2:8,10,12)
-total_NoOverallPotterMeans <- calc_total_score(col_use,df2,col_wt_even)
-df <- cbind(df,total_NoOverallPotterMeans)
-  # drop Potter vulnerability categories only
-col_use <- c(2:9,11)
-total_NoVulernPotterMeans <- calc_total_score(col_use,df2,col_wt_even)
-df <- cbind(df,total_NoVulernPotterMeans)
-
-  # switch DD score with VU score (so DD is below VU not above)
-df$rl_category[which(df$rl_category==0.501)] <- 999
-df$rl_category[which(df$rl_category==0.334)] <- 0.501
-df$rl_category[which(df$rl_category==999)] <- 0.334
-    # calculate total scores
-col_use <- c(2:12)
-total_SwapDDVU <- calc_total_score(col_use,df,col_wt_even)
-df <- cbind(df,total_SwapDDVU)
-
-## convert total scores to ranks
-col_to_rank <- df[,13:23]
-for(i in 1:length(col_to_rank)){
-  col_ranked <- as.vector(rank(col_to_rank[i],ties.method="average"))
-  df <- cbind(df,col_ranked)
-}
-str(df)
-
-# write file
-write.csv(df, file.path(main_dir,"EndangermentMatrix_SensitivityAnalysis.csv"),
-	row.names = F)
-
-
-
-
-
-
-
-
-# set up dataframe for graphing
-tests <- c("A_WeightsAsIs","B_EvenWeights","C_NoPresAbs","D_NoNativity",
-  "E_NoPotter","F_NoOverallPotter","G_NoVulernPotter","H_PotterMeans",
-  "I_NoOverallPotterMeans","J_NoVulernPotterMeans","K_SwapDDVU")
-view_ranks <- data.frame()
-for(i in 1:length(tests)){
-  add <- data.frame(
-    Test = tests[i],
-    Species = df[,1],
-    Rank = df[,(length(tests)+12+i)]) #the number here is the number of columns before totals
-  view_ranks <- rbind(view_ranks,add)
-}
-view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 3))
-head(view_ranks)
-
-# FROM: https://ibecav.github.io/slopegraph/
+# fomatting for the slope graph
 MySpecial <- list(
   # move the x axis labels up top
   scale_x_discrete(position = "top"),
@@ -385,30 +79,512 @@ MySpecial <- list(
   theme(plot.subtitle    = element_text(hjust = 0.5))
 )
 
+################################################################################
+# MANUAL CHANGES REQUIRED: Assign values for scoring
+################################################################################
+
+## read in endangerment matrix
+df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
+  header = T, na.strings = c("","NA"))
+df_raw <- df_raw %>% arrange(species)
+df <- df_raw
+colnames(df)
+
+## create dataframe for assigning scores to categorical columns
+categories <- c("AB","PR",
+                "EW","CR","EN","DD","VU","NT","DD*","LC","NE",
+                "Y","N",
+                "C-A","C-B","C-C","C-D","C-E1","C-E2","C-E3","C-E4",
+                "P-A1","P-A2","P-A3","P-B","P-A4","P-C","P-D","P-E",
+                "N/A")
+category_scores <- c(1, 0,
+                    1, 0.835, 0.668, 0.501, 0.334, 0.167, 0.167, 0, 0,
+                    1, 0,
+                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
+                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
+                    NA)
+vals <- data.frame(categories,category_scores)
+vals
+
+## create vector for assigning scores to quartiles 1-4
+quartile_scores <- c(0, 0, 0.5, 1)
+
+## select columns that need reverse log transformation and quantile scoring
+log_cols <- c(5,6,7,8) # ex situ collections data
+quantile_cols <- c(9,11) # pest/disease and climate change overall scores
+
+## assign weight to each column (must all add up to 1)
+#colnames(df)
+  # "species"                  XX"presence_absence"XX        "rl_category"
+  # "nativity_to_us"           "exsitu_sites_plantsearch" XX"exsitu_sites_survey"XX
+  # "exsitu_wz_sites"          "exsitu_wz_accessions"     XX"climate_change_score"XX
+  # "climate_change_vul_class" XX"pest_disease_score"XX       "pest_disease_vul_class"
+col_wt <- c(0, 0, 0.3, 0.05, 0.1, 0, 0.05, 0.25, 0, 0.125, 0, 0.125, 0.125, 0.125)
+#if(sum(col_wt)!=1){ print("ERROR: !!THE COLUMN WEIGHTS MUST ADD UP TO ONE!!")}
+#print(sum(col_wt))
+
+## create vector of column weights if all are weighted evenly
+col_using <- 7 # number of columns you're using (non-zero weights)
+1/col_using # use this in vector below, for all non-zero weighted columns
+col_wt_even <- c(0, 0, 0.1429, 0.1429, 0.1429, 0, 0.1429, 0.1429, 0, 0.1429, 0, 0.1429, 0.1429, 0.1429)
+
+## correlations to run
+  # all columns
+all_col <- 2:12
+  # ex situ data
+exsitu_col <- 5:8
+  # selected columns
+sel_col <- c(3:5,7:8,10,12)
+sel_col_means <- c(3:5,7:8,13:14)
+
+## sensitivity tests to run
+  # drop nativity
+no_nativity <- c(3,5,7:8,13:14)
+  # drop Potter
+no_potter <- c(3:5,7:8)
+  # drop wz sites
+no_wzsite <- c(3:5,8,13:14)
+  # drop wz accessions
+no_wzacc <- c(3:5,7,13:14)
+
+##
+
+################################################################################
+# Set up endangerment matrix scoring
+################################################################################
+
+# calculate correlations among exsitu data columns (raw values)
+chart_path = file.path(main_dir,chart_folder,"Exsitu_cols-correlation_matrix.png")
+png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+col_corr(df,exsitu_col)
+dev.off()
+
+# convert qualitative values to scores using ref vals created above
+for(i in 1:nrow(vals)){
+  df[df == vals[i,1]] <- vals[i,2]
+}
+# make everything numeric except species name
+df[,2:ncol(df)] <- df[,2:ncol(df)] %>% mutate_if(is.character,as.numeric)
+str(df)
+
+## add columns with Potter mean filled in for NA
+df$climate_change_vul_class_means <- df$climate_change_vul_class
+df$climate_change_vul_class_means[is.na(df$climate_change_vul_class_means)] <-
+  mean(df$climate_change_vul_class[!is.na(df$climate_change_vul_class)])
+df$pest_disease_vul_class_means <- df$pest_disease_vul_class
+df$pest_disease_vul_class_means[is.na(df$pest_disease_vul_class_means)] <-
+  mean(df$pest_disease_vul_class[!is.na(df$pest_disease_vul_class)])
+
+## convert quantitative values to scores using equations
+  # Collections-based columns:
+  #   Log-transformed then scaled in reverse from 1 (no collections) to 0
+  #   (max num collections across all species)
+for(i in 1:length(log_cols)){
+  ln_max <- max(log(df[,log_cols[i]]+1))
+  ln_min <- min(log(df[,log_cols[i]]+1))
+  for(j in 1:nrow(df)){
+    df[j,log_cols[i]] <- 1-((log(df[j,log_cols[i]]+1)-ln_min)/(ln_max-ln_min))
+  }
+}
+  # Climate change and pest/disease score columns:
+  #   use scores entered at the beginning of the script
+for(i in 1:length(quantile_cols)){
+  has_val <- df[,quantile_cols[i]]>0
+  has_val[which(is.na(has_val))] <- FALSE
+  quartiles <- quantile(df[has_val,quantile_cols[i]],na.rm=T)
+  print(quartiles)
+  print(mean(df[has_val,quantile_cols[i]]))
+  for(j in 1:nrow(df)){
+    if (df[j,quantile_cols[i]]>=quartiles[4] & !is.na(df[j,quantile_cols[i]])){
+      df[j,quantile_cols[i]] <- quartile_scores[4]
+    } else if (df[j,quantile_cols[i]]>=quartiles[3] & df[j,quantile_cols[i]]<quartiles[4] & !is.na(df[j,quantile_cols[i]])){
+      df[j,quantile_cols[i]] <- quartile_scores[3]
+    } else if (df[j,quantile_cols[i]]>=quartiles[2] & df[j,quantile_cols[i]]<quartiles[3] & !is.na(df[j,quantile_cols[i]])){
+      df[j,quantile_cols[i]] <- quartile_scores[2]
+    } else if (df[j,quantile_cols[i]]<quartiles[2] & !is.na(df[j,quantile_cols[i]])){
+      df[j,quantile_cols[i]] <- quartile_scores[1]
+    }
+  }
+}
+str(df)
+
+# calculate correlations among all columns once scores are filled in
+chart_path = file.path(main_dir,chart_folder,"All_cols_scored-correlation_matrix.png")
+png(height = 1500, width = 1500, file = chart_path, type = "cairo")
+col_corr(df,all_col)
+dev.off()
+
+################################################################################
+# Calculate total score using all columns
+################################################################################
+
+# look at correlations for selected columns
+chart_path = file.path(main_dir,chart_folder,"Selected_cols_scored-correlation_matrix.png")
+png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+col_corr(df,sel_col_means)
+dev.off()
+  # for each genus
+  gen_df <- df %>% filter(grepl("Malus ",species))
+    chart_path = file.path(main_dir,chart_folder,"Malus-correlation_matrix.png")
+    png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+    col_corr(gen_df,sel_col_means)
+    dev.off()
+  gen_df <- df %>% filter(grepl("Quercus ",species))
+    chart_path = file.path(main_dir,chart_folder,"Quercus-correlation_matrix.png")
+    png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+    col_corr(gen_df,sel_col_means)
+    dev.off()
+  gen_df <- df %>% filter(grepl("Tilia ",species))
+    chart_path = file.path(main_dir,chart_folder,"Tilia-correlation_matrix.png")
+    png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+    col_corr(gen_df,sel_col_means)
+    dev.off()
+  gen_df <- df %>% filter(grepl("Ulmus ",species))
+    chart_path = file.path(main_dir,chart_folder,"Ulmus-correlation_matrix.png")
+    png(height = 1000, width = 1000, file = chart_path, type = "cairo")
+    col_corr(gen_df,sel_col_means)
+    dev.off()
+
+# calculate total score for each species (FUNCTION)
+  ## first way, using mean for NA in pest/climate columns and scaling 1-100
+calc_total_score_Means <- function(selected_cols,df,col_wt){
+  total_score <- vector(mode="numeric", length=nrow(df))
+  for(i in 1:nrow(df)){
+    temp <- 0
+    for(j in 1:length(selected_cols)){
+      temp <- sum(temp, df[i,selected_cols[j]]*col_wt[selected_cols[j]])
+    }
+    total_score[i] <- temp*100
+  }
+  return(total_score)
+}
+  ## second way, using division to remove pest/climate columns if NA; no scale
+calc_total_score_NoNA <- function(selected_cols,df,col_wt){
+  total_score <- vector(mode="numeric", length=nrow(df))
+  for(i in 1:nrow(df)){
+    temp <- 0
+    na_count <- 0
+    for(j in 1:length(selected_cols)){
+      if(is.na(df[i,selected_cols[j]])){
+        na_count <- na_count + 1
+      } else {
+        temp <- sum(temp, df[i,selected_cols[j]]*col_wt[selected_cols[j]])
+      }
+    }
+      # divide score by number of values considers (removes NA columns)
+    temp <- temp/(length(selected_cols)-na_count)
+    total_score[i] <- temp#*100
+  }
+  return(total_score)
+}
+
+  ## calculate using desired columns
+    # Potter means for NA
+total_WeightsAsIs_MeanNA <- calc_total_score_Means(sel_col_means,df,col_wt)
+df <- cbind(df,total_WeightsAsIs_MeanNA)
+    # remove NA columns (divide sum by number of non-NA columns)
+total_WeightsAsIs_NoNA <- calc_total_score_NoNA(sel_col,df,col_wt)
+df <- cbind(df,total_WeightsAsIs_NoNA)
+    # Potter with zeros for NA
+df$pest_disease_vul_class[is.na(df$pest_disease_vul_class)] <- 0
+df$climate_change_vul_class[is.na(df$climate_change_vul_class)] <- 0
+total_WeightsAsIs_ZeroNA <- calc_total_score_Means(sel_col,df,col_wt)
+df <- cbind(df,total_WeightsAsIs_ZeroNA)
+
+########
+## can look at difference between these ranks
+df_test <- df
+col_to_rank <- df_test[,15:17]
+  # assign ranks
+for(i in 1:length(col_to_rank)){
+  col_ranked <- frankv(col_to_rank[i],ties.method="min",order=-1)
+  df_test <- cbind(df_test,col_ranked)
+}
+str(df_test)
+  # view slope graph
+    # set up dataframe for graphing
+df_graph1 <- data.frame(
+    Test = "1_MeanNA",
+    Species = df_test[,1],
+    Rank = df_test[,18])
+df_graph2 <- data.frame(
+    Test = "2_RemoveNA",
+    Species = df_test[,1],
+    Rank = df_test[,19])
+df_graph3 <- data.frame(
+    Test = "3_MeanNA",
+    Species = df_test[,1],
+    Rank = df_test[,18])
+df_graph4 <- data.frame(
+    Test = "4_ZeroNA",
+    Species = df_test[,1],
+    Rank = df_test[,20])
+view_ranks <- Reduce(rbind,list(df_graph1,df_graph2,df_graph3,df_graph4))
+view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 3))
+head(view_ranks)
+    # create chart
 ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
   geom_line(aes(color = Species, alpha = 1), size = 1) +
-#  geom_point(aes(color = Type, alpha = .1), size = 4) +
-  #geom_text_repel(data = view_ranks %>% filter(Test == "SwapDDVU"),
-  #                aes(label = Abbr) ,
-  #                hjust = "left",
-  #                fontface = "bold",
-  #                size = 3,
-  #                nudge_x = -.45,
-  #                direction = "y") +
-  #geom_text_repel(data = view_ranks %>% filter(Test == "NoVulernPotterMeans"),
-  #                aes(label = Abbr) ,
-  #                hjust = "right",
-  #                fontface = "bold",
-  #                size = 3,
-  #                nudge_x = .5,
-  #                direction = "y") +
   geom_label(aes(label = Abbr),
              size = 2,
              label.padding = unit(0.02, "lines"),
              label.size = 0.0) +
   MySpecial +
-  labs(
-    title = "Sensitivity Analysis: Visualization of Rank Changes in the Endangerment Matrix",
-    #subtitle = "Subtitle",
-    caption = "Code from https://ibecav.github.io/slopegraph/"
-  )
+  labs(title = "Sensitivity Analysis: Visualization of Rank Changes in the Endangerment Matrix")
+########
+
+
+################################################################################
+# Sensitivity analysis
+################################################################################
+
+# see how much the weighting affects the scores
+
+  # all columns, even weights
+total_EvenWeights <- calc_total_score_Means(sel_col_means,df,col_wt_even)
+df <- cbind(df,total_EvenWeights)
+
+# calculate score after individually dropping columns we're unsure about
+
+  # drop nativity
+total_NoNativity <- calc_total_score_Means(no_nativity,df,col_wt)
+df <- cbind(df,total_NoNativity)
+  # drop Potter
+total_NoPotter <- calc_total_score_Means(no_potter,df,col_wt)
+df <- cbind(df,total_NoPotter)
+  # drop Potter overall scores only
+#total_NoOverallPotter <- calc_total_score(col_use,df,col_wt)
+#df <- cbind(df,total_NoOverallPotter)
+  # drop Potter vulnerability categories only
+#total_NoVulernPotter <- calc_total_score(col_use,df,col_wt)
+#df <- cbind(df,total_NoVulernPotter)
+  # drop wz sites
+total_NoWZSite <- calc_total_score_Means(no_wzsite,df,col_wt)
+df <- cbind(df,total_NoWZSite)
+  # drop wz accessions
+total_NoWZAcc <- calc_total_score_Means(no_wzacc,df,col_wt)
+df <- cbind(df,total_NoWZAcc)
+
+## convert total scores to ranks
+col_to_rank <- df[,(ncol(df)-(ncol(df)-ncol(df_raw))+3):ncol(df)]
+for(i in 1:length(col_to_rank)){
+  col_ranked <- frankv(col_to_rank[i],ties.method="min",order=-1)
+  df <- cbind(df,col_ranked)
+}
+str(df)
+
+# write file
+write.csv(df, file.path(main_dir,
+  "EndangermentMatrix_SensitivityAnalysis_10-22-21.csv"), row.names = F)
+
+
+## FROM SEAN HOBAN:
+#####################
+#	RANKING			#
+#####################
+
+all_ranks<-df[,23:30]
+colnames(all_ranks)<-colnames(df[,15:22])
+sp_names_wcoll<-df[,1]
+#Could take the mean or majority decision...
+#There are two ways to get agreement across all of them
+#One way to actually rank species is to identify those that most frequently are ranked in a given bunch, say in the top 10
+species_ranked1<-data.frame(sp_names_wcoll,rowSums(all_ranks<10))
+#Another way to do actually rank species is to take the mean across rows in the rank order
+species_ranked2<-data.frame(sp_names_wcoll,rowMeans(all_ranks))
+#species_ranked<-data.frame(sp_names_wcoll,rank(rowMeans(apply(eco_geo_results[,2:(ncol(eco_geo_results)-2)],2,rank))))
+colnames(species_ranked1)<-c("sp","rank"); colnames(species_ranked2)<-c("sp","rank")
+#It really doesn't matter which approach :)
+cbind(species_ranked1[order(species_ranked1$rank),],species_ranked2[order(species_ranked2$rank,decreasing=T),])
+
+#But let's examine more closely the individual columns and how they differ
+#Could look at those that might be most different and figure out why
+#Examine them by eye
+all_ranks <- cbind(sp_names_wcoll,all_ranks)
+cbind(all_ranks[order(all_ranks[,2]),1],
+	    all_ranks[order(all_ranks[,3]),1],
+	    all_ranks[order(all_ranks[,4]),1],
+	    all_ranks[order(all_ranks[,5]),1],
+	    all_ranks[order(all_ranks[,6]),1],
+	    all_ranks[order(all_ranks[,7]),1],
+	    all_ranks[order(all_ranks[,8]),1],
+	    all_ranks[order(all_ranks[,9]),1]
+    )
+
+#TO DO ADD IN EMILY CODE FOR LINES
+
+#How to get the difference in new rank from old rank
+#match(species_ranked_geo50[order(species_ranked_geo50$rank),1],species_ranked_geo100[order(species_ranked_geo100$rank),1])-1:41
+count_changes<-function(list_ranks,base=1){
+	base_order<-list_ranks[[base]][order(list_ranks[[base]]$rank),1]
+	examine_changes<-data.frame(base_order)
+	for (i in 1:length(list_ranks)){
+		ranks_diff<-match(base_order,list_ranks[[i]][order(list_ranks[[i]]$rank),1])
+		examine_changes<-cbind(examine_changes,match(base_order,list_ranks[[i]][order(list_ranks[[i]]$rank),1])-1:length(base_order))
+		colnames(examine_changes)[i+1]<-names(list_ranks[[i]][2])
+	}
+	#examine_changes<-examine_changes[,-2]
+	examine_changes
+}
+#compare to geo50
+examine_changes<-count_changes(list(data.frame("sp"=all_ranks[,1],"rank_WeightsAsIs_MeanNA"=as.numeric(all_ranks[,2])),
+                                    data.frame("sp"=all_ranks[,1],"rank_WeightsAsIs_NoNA"=as.numeric(all_ranks[,3])),
+                                    data.frame("sp"=all_ranks[,1],"rank_WeightsAsIs_ZeroNA"=as.numeric(all_ranks[,4])),
+                                    data.frame("sp"=all_ranks[,1],"rank_EvenWeights"=as.numeric(all_ranks[,5])),
+                                    data.frame("sp"=all_ranks[,1],"rank_NoNativity"=as.numeric(all_ranks[,6])),
+                                    data.frame("sp"=all_ranks[,1],"rank_NoPotter"=as.numeric(all_ranks[,7])),
+                                    data.frame("sp"=all_ranks[,1],"rank_NoWZSite"=as.numeric(all_ranks[,8])),
+                                    data.frame("sp"=all_ranks[,1],"rank_NoWZAcc"=as.numeric(all_ranks[,9]))
+                                  ))
+colSums(abs(examine_changes[,-1])>5)
+colSums(abs(examine_changes[,-1])>10)
+colSums(abs(examine_changes[,-1])>20)
+
+
+
+
+
+
+
+
+## OLD CHUNKS
+
+#  # use mean for species with no Potter data
+#    # select potter columns from raw data
+#df2 <- df_raw[,c(1,9:12)]
+#    # create categories again but with N/A = 999
+#categories <- c("C-A","C-B","C-C","C-D","C-E1","C-E2","C-E3","C-E4",
+#                "P-A1","P-A2","P-A3","P-B","P-A4","P-C","P-D","P-E",
+#                "N/A")
+#category_scores <- c(1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
+#                    1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
+#                    999)
+#vals <- data.frame(categories,category_scores)
+#    # replace categories with scores
+#for(i in 1:nrow(vals)){
+#  df2[df2 == vals[i,1]] <- vals[i,2]
+#}
+#  # calculate correlations among Potter columns that have scores
+#have_Potter_val <- df2[which(df2$climate_change_score!="999"),]
+#have_Potter_val <- have_Potter_val %>% mutate_if(is.character,as.numeric)
+#cols_data <- 2:5
+#col_corr(have_Potter_val)
+#    ### for categorical cols, replace N/A with mean score for the col
+#df2[df2[,3]=="999",3] <- round(mean(as.numeric(df2[df2[,3]!="999",3])),3)
+#df2[df2[,5]=="999",5] <- round(mean(as.numeric(df2[df2[,5]!="999",5])),5)
+#    # make everything numeric except species name
+#df2[,2:ncol(df2)] <- df2[,2:ncol(df2)] %>% mutate_if(is.character,as.numeric); str(df2)
+    # convert quantitative cols to scores (0-1) using quartiles
+#quantile_cols <- c(2,4)
+#for(i in 1:length(quantile_cols)){
+#  has_val <- df2[,quantile_cols[i]]<100
+#  quartiles <- quantile(df2[has_val,quantile_cols[i]])
+#    ### for quantitative cols, replace N/A with mean value for the col
+#  df2[!has_val,quantile_cols[i]] <- mean(df2[has_val,quantile_cols[i]])
+#  for(j in 1:nrow(df2)){
+#    if (df2[j,quantile_cols[i]]>=quartiles[4]){
+#      df2[j,quantile_cols[i]] <- quartile_scores[4]
+#    } else if (df2[j,quantile_cols[i]]>=quartiles[3] & df2[j,quantile_cols[i]]<quartiles[4]){
+#      df2[j,quantile_cols[i]] <- quartile_scores[3]
+#    } else if (df2[j,quantile_cols[i]]>=quartiles[2] & df2[j,quantile_cols[i]]<quartiles[3]){
+#      df2[j,quantile_cols[i]] <- quartile_scores[2]
+#    } else if (df2[j,quantile_cols[i]]<quartiles[2]){
+#      df2[j,quantile_cols[i]] <- quartile_scores[1]
+#    }
+#  }
+#}
+#    # add new potter scores to other data
+#df_new <- full_join(df[,1:8],df2[,c(1,3,5)])
+#df <- cbind(df_new,df[13:18])
+#str(df)
+#colnames(df)
+#    # calculate total scores
+#total_PotterMeans <- calc_total_score(col_use,df,col_wt)
+#df <- cbind(df,total_PotterMeans)
+  # drop Potter overall scores only
+#col_use <- c(2:8,10,12)
+#total_NoOverallPotterMeans <- calc_total_score(col_use,df2,col_wt)
+#df <- cbind(df,total_NoOverallPotterMeans)
+  # drop Potter vulnerability categories only
+#col_use <- c(2:9,11)
+#total_NoPotterMeans <- calc_total_score(col_use,df2,col_wt)
+#df <- cbind(df,total_NoPotterMeans)
+
+#  # switch DD score with VU score (so DD is below VU not above)
+#df$rl_category[which(df$rl_category==0.501)] <- 999
+#df$rl_category[which(df$rl_category==0.334)] <- 0.501
+#df$rl_category[which(df$rl_category==999)] <- 0.334
+#    # calculate total scores
+#total_SwapDDVU <- calc_total_score(col_use,df,col_wt)
+#df <- cbind(df,total_SwapDDVU)
+
+##### OPTIONAL GRAPHING #####
+
+# set up dataframe for graphing
+#tests <- c(
+#  "A_STANDARD",
+#  "B_EvenWeights",
+#  "C_STANDARD",
+#  "D_NoNativity",
+#  "E_STANDARD",
+#  "F_NoPotter",
+#  "G_STANDARD",
+#  "H_NoWZSite",
+#  "I_STANDARD",
+#  "J_NoWZAcc",
+#  "K_STANDARD",
+#  "L_PotterMeans",
+#  "M_STANDARD",
+#  "N_SwapDDVU"
+#)
+#colnames(df)
+#standard <- data.frame(
+#    Test = "STANDARD",
+#    Species = df[,1],
+#    Rank = df[,19]) # first column with ranks
+#view_ranks <- data.frame()
+#num_tests <- 7 # number of non-"STANDARD" tests
+#for(i in 1:num_tests){
+#  print(tests[i+i])
+#  add <- data.frame(
+#    Test = tests[i+i],
+#    Species = df[,1],
+#    Rank = df[,19+i]) # first column with ranks
+#  standard$Test <- tests[i+i-1]
+#  view_ranks <- Reduce(rbind,list(view_ranks,standard,add))
+#}
+#view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 3))
+#head(view_ranks)
+
+# create and save chart
+#chart_path = file.path(main_dir,chart_folder,"Slope_graph.png")
+#  png(height = 1800, width = 1800, file = chart_path, type = "cairo")
+
+#ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
+#  geom_line(aes(color = Species, alpha = 1), size = 1) +
+#  geom_point(aes(color = Type, alpha = .1), size = 4) +
+#  #geom_text_repel(data = view_ranks %>% filter(Test == "SwapDDVU"),
+#  #                aes(label = Abbr) ,
+#  #                hjust = "left",
+#  #                fontface = "bold",
+#  #                size = 3,
+#  #                nudge_x = -.45,
+#  #                direction = "y") +
+#  #geom_text_repel(data = view_ranks %>% filter(Test == "NoVulernPotterMeans"),
+#  #                aes(label = Abbr) ,
+#  #                hjust = "right",
+#  #                fontface = "bold",
+#  #                size = 3,
+#  #                nudge_x = .5,
+#  #                direction = "y") +
+#  geom_label(aes(label = Abbr),
+#             size = 2,
+#             label.padding = unit(0.02, "lines"),
+#             label.size = 0.0) +
+#  MySpecial +
+#  labs(
+#    title = "Sensitivity Analysis: Visualization of Rank Changes in the Endangerment Matrix"#,
+#    #subtitle = "Subtitle",
+#    #caption = "Code from https://ibecav.github.io/slopegraph/"
+#  )
+##dev.off()

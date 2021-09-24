@@ -375,7 +375,7 @@ str(df)
 
 # write file
 write.csv(df, file.path(main_dir,
-  "EndangermentMatrix_SensitivityAnalysis_10-22-21.csv"), row.names = F)
+  "EndangermentMatrix_SensitivityAnalysis_09-22-21.csv"), row.names = F)
 
 
 ## FROM SEAN HOBAN:
@@ -411,8 +411,6 @@ cbind(all_ranks[order(all_ranks[,2]),1],
 	    all_ranks[order(all_ranks[,9]),1]
     )
 
-#TO DO ADD IN EMILY CODE FOR LINES
-
 #How to get the difference in new rank from old rank
 #match(species_ranked_geo50[order(species_ranked_geo50$rank),1],species_ranked_geo100[order(species_ranked_geo100$rank),1])-1:41
 count_changes<-function(list_ranks,base=1){
@@ -438,7 +436,26 @@ examine_changes<-count_changes(list(data.frame("sp"=all_ranks[,1],"rank_WeightsA
                                   ))
 colSums(abs(examine_changes[,-1])>5)
 colSums(abs(examine_changes[,-1])>10)
+colSums(abs(examine_changes[,-1])>15)
 colSums(abs(examine_changes[,-1])>20)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

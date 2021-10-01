@@ -130,11 +130,11 @@ MySpecial <- list(
 ################################################################################
 
 ## read in endangerment matrix
-df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
+en_df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
   header = T, na.strings = c("","NA"))
-df_raw <- df_raw %>% arrange(species)
-df <- df_raw
-colnames(df)
+en_df_raw <- en_df_raw %>% arrange(species)
+en_df <- en_df_raw
+colnames(en_df)
 
 ## create dataframe for assigning scores to categorical columns
 categories <- c("AB","PR",
@@ -160,7 +160,7 @@ log_cols <- c(5,6,7,8) # ex situ collections data
 quantile_cols <- c(9,11) # pest/disease and climate change overall scores
 
 ## assign weight to each column (must all add up to 1)
-#colnames(df)
+#colnames(en_df)
   # "species"                  XX"presence_absence"XX        "rl_category"
   # "nativity_to_us"           "exsitu_sites_plantsearch" XX"exsitu_sites_survey"XX
   # "exsitu_wz_sites"          "exsitu_wz_accessions"     XX"climate_change_score"XX
@@ -193,23 +193,25 @@ no_wzsite <- c(3:5,8,13:14)
   # drop wz accessions
 no_wzacc <- c(3:5,7,13:14)
 
+## threashold for using Potter columns (minimum percent filled to use col)
+potter_thresh <- 0.15
 
 ################################################################################
 # START LOOPING THROUGH GENERA
 ################################################################################
 
 # create list of dataframes, one for each genus, for looping through
-malus <- df %>% filter(grepl("Malus ",species))
-quercus <- df %>% filter(grepl("Quercus ",species))
-tilia <- df %>% filter(grepl("Tilia ",species))
-ulmus <- df %>% filter(grepl("Ulmus ",species))
+malus <- en_df %>% filter(grepl("Malus ",species))
+quercus <- en_df %>% filter(grepl("Quercus ",species))
+tilia <- en_df %>% filter(grepl("Tilia ",species))
+ulmus <- en_df %>% filter(grepl("Ulmus ",species))
 genera <- list(malus,quercus,tilia,ulmus)
 
 ##
 #### start looping...
 ##
 #for(g in 1:length(genera)){
-g <- 1
+g <- 4
 
   ################################################################################
   # Set up endangerment matrix scoring
@@ -231,14 +233,6 @@ g <- 1
   genera[[g]][,2:ncol(genera[[g]])] <- genera[[g]][,2:ncol(genera[[g]])] %>% mutate_if(is.character,as.numeric)
   str(genera[[g]])
 
-  ## add columns with Potter mean filled in for NA
-  genera[[g]]$climate_change_vul_class_means <- genera[[g]]$climate_change_vul_class
-  genera[[g]]$climate_change_vul_class_means[is.na(genera[[g]]$climate_change_vul_class_means)] <-
-    mean(genera[[g]]$climate_change_vul_class[!is.na(genera[[g]]$climate_change_vul_class)])
-  genera[[g]]$pest_disease_vul_class_means <- genera[[g]]$pest_disease_vul_class
-  genera[[g]]$pest_disease_vul_class_means[is.na(genera[[g]]$pest_disease_vul_class_means)] <-
-    mean(genera[[g]]$pest_disease_vul_class[!is.na(genera[[g]]$pest_disease_vul_class)])
-
   ## convert quantitative values to scores using equations
     # Collections-based columns:
     #   Log-transformed then scaled in reverse from 1 (no collections) to 0
@@ -250,26 +244,47 @@ g <- 1
       genera[[g]][j,log_cols[i]] <- 1-((log(genera[[g]][j,log_cols[i]]+1)-ln_min)/(ln_max-ln_min))
     }
   }
+
+  # score Potter columns
+    #first check percent of species with data, and compare to threshold you set
+    potter_thresh_g <- nrow(genera[[g]][which(!is.na(genera[[g]]$climate_change_vul_class)),]) / nrow(genera[[g]])
+  if(potter_thresh < potter_thresh_g){
+    # add columns with Potter mean filled in for NA
+    genera[[g]]$climate_change_vul_class_means <- genera[[g]]$climate_change_vul_class
+    genera[[g]]$climate_change_vul_class_means[is.na(genera[[g]]$climate_change_vul_class_means)] <-
+      mean(genera[[g]]$climate_change_vul_class[!is.na(genera[[g]]$climate_change_vul_class)])
+    genera[[g]]$pest_disease_vul_class_means <- genera[[g]]$pest_disease_vul_class
+    genera[[g]]$pest_disease_vul_class_means[is.na(genera[[g]]$pest_disease_vul_class_means)] <-
+      mean(genera[[g]]$pest_disease_vul_class[!is.na(genera[[g]]$pest_disease_vul_class)])
     # Climate change and pest/disease score columns:
     #   use scores entered at the beginning of the script
-  for(i in 1:length(quantile_cols)){
-    has_val <- genera[[g]][,quantile_cols[i]]>0
-    has_val[which(is.na(has_val))] <- FALSE
-    quartiles <- quantile(genera[[g]][has_val,quantile_cols[i]],na.rm=T)
-    print(quartiles)
-    print(mean(genera[[g]][has_val,quantile_cols[i]]))
-    for(j in 1:nrow(genera[[g]])){
-      if (genera[[g]][j,quantile_cols[i]]>=quartiles[4] & !is.na(genera[[g]][j,quantile_cols[i]])){
-        genera[[g]][j,quantile_cols[i]] <- quartile_scores[4]
-      } else if (genera[[g]][j,quantile_cols[i]]>=quartiles[3] & genera[[g]][j,quantile_cols[i]]<quartiles[4] & !is.na(genera[[g]][j,quantile_cols[i]])){
-        genera[[g]][j,quantile_cols[i]] <- quartile_scores[3]
-      } else if (genera[[g]][j,quantile_cols[i]]>=quartiles[2] & genera[[g]][j,quantile_cols[i]]<quartiles[3] & !is.na(genera[[g]][j,quantile_cols[i]])){
-        genera[[g]][j,quantile_cols[i]] <- quartile_scores[2]
-      } else if (genera[[g]][j,quantile_cols[i]]<quartiles[2] & !is.na(genera[[g]][j,quantile_cols[i]])){
-        genera[[g]][j,quantile_cols[i]] <- quartile_scores[1]
+    for(i in 1:length(quantile_cols)){
+      has_val <- genera[[g]][,quantile_cols[i]]>0
+      has_val[which(is.na(has_val))] <- FALSE
+      quartiles <- quantile(genera[[g]][has_val,quantile_cols[i]],na.rm=T)
+      print(quartiles)
+      print(mean(genera[[g]][has_val,quantile_cols[i]]))
+      for(j in 1:nrow(genera[[g]])){
+        if (genera[[g]][j,quantile_cols[i]]>=quartiles[4] & !is.na(genera[[g]][j,quantile_cols[i]])){
+          genera[[g]][j,quantile_cols[i]] <- quartile_scores[4]
+        } else if (genera[[g]][j,quantile_cols[i]]>=quartiles[3] & genera[[g]][j,quantile_cols[i]]<quartiles[4] & !is.na(genera[[g]][j,quantile_cols[i]])){
+          genera[[g]][j,quantile_cols[i]] <- quartile_scores[3]
+        } else if (genera[[g]][j,quantile_cols[i]]>=quartiles[2] & genera[[g]][j,quantile_cols[i]]<quartiles[3] & !is.na(genera[[g]][j,quantile_cols[i]])){
+          genera[[g]][j,quantile_cols[i]] <- quartile_scores[2]
+        } else if (genera[[g]][j,quantile_cols[i]]<quartiles[2] & !is.na(genera[[g]][j,quantile_cols[i]])){
+          genera[[g]][j,quantile_cols[i]] <- quartile_scores[1]
+        }
       }
     }
+  } else { # remove Potter columns if % filled is below threshold
+    genera[[g]]$climate_change_vul_class <- 0
+    genera[[g]]$pest_disease_vul_class <- 0
+    genera[[g]]$climate_change_score <- 0
+    genera[[g]]$pest_disease_score <- 0
+    genera[[g]]$climate_change_vul_class_means <- 0
+    genera[[g]]$pest_disease_vul_class_means <- 0
   }
+
   str(genera[[g]])
 
   # calculate correlations among all columns once scores are filled in
@@ -305,32 +320,32 @@ g <- 1
 
   ########
   ## can look at difference between these ranks
-  df_test <- genera[[g]]
-  col_to_rank <- df_test[,15:17]
+  en_df_test <- genera[[g]]
+  col_to_rank <- en_df_test[,15:17]
     # assign ranks
   for(i in 1:length(col_to_rank)){
     col_ranked <- frankv(col_to_rank[i],ties.method="min",order=-1)
-    df_test <- cbind(df_test,col_ranked)
+    en_df_test <- cbind(en_df_test,col_ranked)
   }
-  str(df_test)
+  str(en_df_test)
     # view slope graph
       # set up dataframe for graphing
   graph1 <- data.frame(
       Test = "1_MeanNA",
-      Species = df_test[,1],
-      Rank = df_test[,18])
+      Species = en_df_test[,1],
+      Rank = en_df_test[,18])
   graph2 <- data.frame(
       Test = "2_RemoveNA",
-      Species = df_test[,1],
-      Rank = df_test[,19])
+      Species = en_df_test[,1],
+      Rank = en_df_test[,19])
   graph3 <- data.frame(
       Test = "3_MeanNA",
-      Species = df_test[,1],
-      Rank = df_test[,18])
+      Species = en_df_test[,1],
+      Rank = en_df_test[,18])
   graph4 <- data.frame(
       Test = "4_ZeroNA",
-      Species = df_test[,1],
-      Rank = df_test[,20])
+      Species = en_df_test[,1],
+      Rank = en_df_test[,20])
   view_ranks <- Reduce(rbind,list(graph1,graph2,graph3,graph4))
   view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 3))
   head(view_ranks)
@@ -379,7 +394,7 @@ g <- 1
   genera[[g]] <- cbind(genera[[g]],total_NoWZAcc)
 
   ## convert total scores to ranks
-  col_to_rank <- genera[[g]][,(ncol(genera[[g]])-(ncol(genera[[g]])-ncol(df_raw))+3):ncol(genera[[g]])]
+  col_to_rank <- genera[[g]][,(ncol(genera[[g]])-(ncol(genera[[g]])-ncol(en_df_raw))+3):ncol(genera[[g]])]
   for(i in 1:length(col_to_rank)){
     col_ranked <- frankv(col_to_rank[i],ties.method="min",order=-1)
     genera[[g]] <- cbind(genera[[g]],col_ranked)
@@ -389,7 +404,7 @@ g <- 1
   # write file
   write.csv(genera[[g]], file.path(main_dir,
     paste0(gsub(" .*$","",genera[[g]][1,1]),
-    "-EndangermentMatrix_SensitivityAnalysis_09-24-21.csv")), row.names = F)
+    "-EndangermentMatrix_SensitivityAnalysis_10-01-21.csv")), row.names = F)
 
   ## FROM SEAN HOBAN:
   #####################

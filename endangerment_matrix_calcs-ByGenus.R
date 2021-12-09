@@ -29,7 +29,8 @@
 ################################################################################
 
 main_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value/script_outputs"
-chart_folder <- "corr_charts"
+corr_chart_folder <- "corr_charts"
+sens_chart_folder <- "sensitivity_charts"
 
 ################################################################################
 # Functions
@@ -190,6 +191,11 @@ seans <- en_df %>% filter(species %in% seans_spp) %>% mutate(group="GeneticDimSp
   # list of groups to loop through
 genera <- list(all,malus,quercus,tilia,ulmus,seans)
 
+# create dataframes to collect final sensitivity analysis rank stats across groups
+top_tenth <- data.frame(species="start",group="start",count_times_in_top10=0)
+top_fourth <- data.frame(species="start",group="start",count_times_in_top25=0)
+top_third <- data.frame(species="start",group="start",count_times_in_top33=0)
+
 ##
 #### start looping...
 ##
@@ -201,7 +207,7 @@ for(g in 1:length(genera)){
   ################################################################################
 
   # calculate correlations among exsitu data columns (raw values)
-  chart_path = file.path(main_dir,chart_folder,
+  chart_path = file.path(main_dir,corr_chart_folder,
     paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Exsitu_cols-correlation_matrix.png"))
   png(height = 1000, width = 1000, file = chart_path, type = "cairo")
   col_corr(genera[[g]],exsitu_col)
@@ -270,14 +276,14 @@ for(g in 1:length(genera)){
   str(genera[[g]])
 
   # calculate correlations among all columns once scores are filled in
-  chart_path = file.path(main_dir,chart_folder,
+  chart_path = file.path(main_dir,corr_chart_folder,
     paste0(gsub(" .*$","",genera[[g]]$group[1]),"-All_cols_scored-correlation_matrix.png"))
   png(height = 1500, width = 1500, file = chart_path, type = "cairo")
   col_corr(genera[[g]],all_col)
   dev.off()
 
   # look at correlations for selected columns
-  chart_path = file.path(main_dir,chart_folder,
+  chart_path = file.path(main_dir,corr_chart_folder,
         paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Selected_cols_scored-correlation_matrix.png"))
   png(height = 1000, width = 1000, file = chart_path, type = "cairo")
   col_corr(genera[[g]],sel_col)
@@ -354,7 +360,7 @@ for(g in 1:length(genera)){
     labs(y = "Endangerment Score",
          x = "Species",
          title = "Endangerment Matrix Sensitivity Analysis")
-  ggsave(file.path(main_dir,chart_folder,
+  ggsave(file.path(main_dir,sens_chart_folder,
     paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Selected_cols_scored-sensitivity_analysis_scatterplots.png")),
     width=20,height=10)
 
@@ -368,7 +374,7 @@ for(g in 1:length(genera)){
     labs(y = "Endangerment Score",
          x = "Sensitivity Test",
          title = "Endangerment Matrix Sensitivity Analysis")
-  ggsave(file.path(main_dir,chart_folder,
+  ggsave(file.path(main_dir,sens_chart_folder,
     paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Selected_cols_scored-sensitivity_analysis_boxplots.png")),
     width=20,height=10)
 
@@ -453,16 +459,31 @@ for(g in 1:length(genera)){
   ### count number of times a species shows up in the top 'bunch'
   ncol(all_ranks)
 
-  # top 5 spots
-  species_ranked1<-data.frame(species,rowSums(all_ranks<5))
+  # top 10% (tenth) of spots
+  species_ranked1<-data.frame(
+    species,
+    group=rep(genera[[g]]$group[1]),
+    count_times_in_top10=rowSums(all_ranks<(round(nrow(genera[[g]])/10,0))))
+  species_ranked1 <- species_ranked1 %>% arrange(desc(count_times_in_top10))
+  top_tenth <- rbind(top_tenth,species_ranked1)
   head(species_ranked1[order(species_ranked1[,2],decreasing=T),],n=20)
 
-  # top 10 spots
-  species_ranked2<-data.frame(species,rowSums(all_ranks<10))
+  # top 25% (fourth) of spots
+  species_ranked2<-data.frame(
+    species,
+    group=rep(genera[[g]]$group[1]),
+    count_times_in_top25=rowSums(all_ranks<(round(nrow(genera[[g]])/4,0))))
+  species_ranked2 <- species_ranked2 %>% arrange(desc(count_times_in_top25))
+  top_fourth <- rbind(top_fourth,species_ranked2)
   head(species_ranked2[order(species_ranked2[,2],decreasing=T),],n=30)
 
-  # top 20 spots
-  species_ranked3<-data.frame(species,rowSums(all_ranks<20))
+  # top 33% (third) of spots
+  species_ranked3<-data.frame(
+    species,
+    group=rep(genera[[g]]$group[1]),
+    count_times_in_top33=rowSums(all_ranks<(round(nrow(genera[[g]])/3,0))))
+  species_ranked3 <- species_ranked3 %>% arrange(desc(count_times_in_top33))
+  top_third <- rbind(top_third,species_ranked3)
   head(species_ranked3[order(species_ranked3[,2],decreasing=T),],n=50)
 
   # join all together for saving
@@ -476,11 +497,15 @@ for(g in 1:length(genera)){
 
 }
 
-
-
-
-
-
+# look at which species are always at the top
+rank_stats <- Reduce(full_join,list(top_tenth,top_fourth,top_third))
+rank_stats <- rank_stats[-1,]
+  # arrange what you want at the top
+rank_stats <- rank_stats %>% arrange(group,desc(count_times_in_top33))
+head(rank_stats,n=50)
+# write file
+write.csv(rank_stats, file.path(main_dir,
+  "EndangermentMatrix_Sensitivity_FindTopSpecies.csv"), row.names = F)
 
 
 ## OLD BIT FOR CREATING SLOPE GRAPH VISUALIZATION

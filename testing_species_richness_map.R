@@ -30,7 +30,7 @@ data_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/occurrence_points"
 output_dir <- "/Volumes/GoogleDrive/Shared drives/IMLS MFA/Endangerment Value/script_outputs"
 
 ################################################################################
-#
+# Country-level richness maps
 ################################################################################
 
 ### READ IN COUNTRIES SHAPEFILE
@@ -176,6 +176,9 @@ map.countries <- function(countries,pal,legend_text,legend_labels){
   htmlwidgets::saveWidget(map_richness_en, "CountryRichness_TargetGenetic_leafletmap.html")
 
 
+################################################################################
+# Occurrence-level richness maps
+################################################################################
 
 
 

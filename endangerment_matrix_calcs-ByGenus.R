@@ -222,9 +222,9 @@ top_third <- data.frame(species="start",group="start",count_times_in_top33=0)
 ## create dataframe for assigning scores to categorical columns
 categories <- c(
     # IUCN RL categories
-    "EW","CR","EN","DD","VU","NT","DD*","LC",
-      # "(?)" is used to mark assessments that haven't been published yet; not scored differently
-    "EW(?)","CR(?)","EN(?)","DD(?)","VU(?)","NT(?)","DD*(?)","LC(?)",
+    "EW","CR","EN","DD","VU","NT","DD*","LC","NE",
+      # p is used to mark assessments that haven't been published yet; not scored differently
+    "EWₚ","CRₚ","ENₚ","DDₚ","VUₚ","NTₚ","DD*ₚ","LCₚ",
     # nativity to country of interest
     "Native","Non-native",
     # climate change vulnerability classes (Potter et al. 2017)
@@ -234,7 +234,7 @@ categories <- c(
     # when no data are available
     "No data")
   ## now give a score for each value listed in 'categories'
-category_scores <- c(1, 0.835, 0.668, 0.501, 0.334, 0.167, 0.167, 0,
+category_scores <- c(1, 0.835, 0.668, 0.501, 0.334, 0.167, 0.167, 0, 0,
                      1, 0.835, 0.668, 0.501, 0.334, 0.167, 0.167, 0,
                      1, 0,
                      1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0,
@@ -253,29 +253,29 @@ log_cols <- c(6:8) # ex situ collections data columns
 
 ## assign weight to each column (must all add up to 1)
 ## put zero if the column won't be scored (e.g., 'species' col)
-col_wt <- c(0, 0, 0, 0.3, 0.05, 0.1, 0.05, 0.25, 0.125, 0.125)
+col_wt <- c(0, 0, 0, 0.3, 0.05, 0.1, 0.05, 0.25, 0, 0, 0.125, 0.125)
 if(sum(col_wt)!=1){ print("ERROR: !!THE COLUMN WEIGHTS MUST ADD UP TO ONE!!")}
 
 ## create vector of column weights when all are weighted evenly
 col_using <- 7 # number of columns you're using (non-zero weights)
 1/col_using # use this in vector below, for all non-zero weighted columns
-col_wt_even <- c(0, 0, 0, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429)
+col_wt_even <- c(0, 0, 0, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0, 0, 0.1429, 0.1429)
 
 ## correlations to run
   # all columns
-all_col <- 4:10
+all_col <- 4:12
   # ex situ data
 exsitu_col <- 6:8
   # selected columns - you can create an additional subset if you'd like
   # right now we are just using all columns
-sel_col <- 4:10
+sel_col <- c(4:8,11:12)
   # nicknames for easier viewing of results when we drop each column one-by-one
 sel_col_nicknames <- c("no_rl","no_nativity","no_plantsearch","no_wzsites",
   "no_wzacc","no_climchange","no_pestdisease")
   # additional climate change / pest&disease vulnerability analyses
-sel_col_PotterZero <- c(4:8,11:12)
-col_wt_PotterZero <- c(0, 0, 0, 0.3, 0.05, 0.1, 0.05, 0.25, 0.125, 0.125, 0.125, 0.125)
-col_wt_even_PotterZero <- c(0, 0, 0, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429)
+sel_col_PotterZero <- 4:10
+col_wt_PotterZero <- c(0, 0, 0, 0.3, 0.05, 0.1, 0.05, 0.25, 0.125, 0.125, 0, 0)
+col_wt_even_PotterZero <- c(0, 0, 0, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0, 0)
 
 ## threashold for using Potter columns (minimum percent filled to use col)
 potter_thresh <- 0.15
@@ -287,7 +287,7 @@ potter_thresh <- 0.15
 #for(g in 1:length(genera)){
   # or can go one-by-one manually
   # !! To run loop: comment out next line & un-comment the 'for' line above !!
-  g <- 5
+  g <- 1
 
   ##############################################################################
   # Set up endangerment matrix scoring
@@ -352,7 +352,7 @@ potter_thresh <- 0.15
   chart_path = file.path(main_dir,corr_chart_folder,
     paste0(gsub(" .*$","",genera[[g]]$group[1]),"-All_cols_scored-correlation_matrix.png"))
   png(height = 1500, width = 1500, file = chart_path, type = "cairo")
-  col_corr(genera[[g]],all_col)
+  col_corr(genera[[g]],sel_col)
   dev.off()
 
   # if desired, look at correlations for selected columns
@@ -454,18 +454,18 @@ potter_thresh <- 0.15
     width=20,height=10)
 
   # create scatter plot of scores, colored by genus
-  genera[[g]] %>%
-    mutate(species = fct_reorder(species, desc(wt_all))) %>%
-    ggplot(aes(x = species, y = wt_all, color = genus)) +
-      geom_point() +
-      ylim(0, 100) +
-      #coord_flip() +
-      xlab("Species") +
-      ylab("Total Score") +
-      theme(panel.background = element_rect(fill = "white"))
-  ggsave(file.path(main_dir,sens_chart_folder,
-    paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Selected_cols_scored-sensitivity_analysis_line.png")),
-    width=20,height=10)
+#  genera[[g]] %>%
+#    mutate(species = fct_reorder(species, desc(wt_all))) %>%
+#    ggplot(aes(x = species, y = wt_all, color = genus)) +
+#      geom_point() +
+#      ylim(0, 100) +
+#      #coord_flip() +
+#      xlab("Species") +
+#      ylab("Total Score") +
+#      theme(panel.background = element_rect(fill = "white"))
+#  ggsave(file.path(main_dir,sens_chart_folder,
+#    paste0(gsub(" .*$","",genera[[g]]$group[1]),"-Selected_cols_scored-sensitivity_analysis_line.png")),
+#    width=20,height=10)
 
   ### ADD RANKS FOR DIFFERENT TESTS ###
 
@@ -586,6 +586,10 @@ potter_thresh <- 0.15
     "-EndangermentMatrix_SensitivityAnalysis.csv")), row.names = F)
 
 }
+
+
+
+
 
 
 

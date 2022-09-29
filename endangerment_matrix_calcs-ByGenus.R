@@ -189,7 +189,7 @@ MySpecial <- list(
 ################################################################################
 
 ## read in endangerment matrix
-en_df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR.csv"),
+en_df_raw <- read.csv(file.path(main_dir,"endangerment_matrix_forR-Sep2022version.csv"),
   header = T, na.strings = c("","NA"))
 en_df_raw <- en_df_raw %>% arrange(species)
 en_df <- en_df_raw
@@ -284,10 +284,10 @@ potter_thresh <- 0.15
 # START LOOPING THROUGH GENERA/GROUPS
 ################################################################################
 
-#for(g in 1:length(genera)){
+for(g in 1:length(genera)){
   # or can go one-by-one manually
   # !! To run loop: comment out next line & un-comment the 'for' line above !!
-  g <- 1
+  #g <- 5
 
   ##############################################################################
   # Set up endangerment matrix scoring
@@ -594,8 +594,7 @@ potter_thresh <- 0.15
 
 
 
-## CREATE SLOPE GRAPH VISUALIZATION
-
+## CREATE SLOPE GRAPH VISUALIZATION FOR MANUSCRIPT
 
   ########
   ## visualize sensitivity
@@ -603,11 +602,11 @@ potter_thresh <- 0.15
   colnames(genera[[g]])
   en_df_test <- genera[[g]] %>% arrange(wt_all_r)
   test_cols <- c(40,32,33) #!!
-  test_labels <- c("All_Even_Weights","No_Red_List","No_Nativity") #!!
+  test_labels <- c("All_Even_Weights","No_Extinction-risk","No_Natural-dist-in-US") #!!
     # cycle through each combination to create a set of charts
     #   a loop doesn't seem to create the chart? have just repeated the chunk for each
     graph_base <- data.frame(
-        Test = "*All_Weighted",
+        Test = "*All_Columns",
         Species = en_df_test[,1],
         Rank = en_df_test[,31])
       graph_base$Rank <- sapply(graph_base$Rank, function(x) 32-x)
@@ -618,12 +617,12 @@ potter_thresh <- 0.15
         Rank = en_df_test[,test_cols[i]])
       graph_compare$Rank <- sapply(graph_compare$Rank, function(x) 32-x)
     view_ranks <- rbind(graph_base,graph_compare)
-    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 4),".")
+    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 15))
     # create chart
     ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
-      geom_line(aes(color = Species, alpha = 1), size = 1) +
+      geom_line(aes(color = Species, alpha = 1), size = 2) +
       geom_label(aes(label = Abbr),
-                 size = 3,
+                 size = 4,
                  label.padding = unit(0.02, "lines"),
                  label.size = 0.0) +
       MySpecial +
@@ -635,12 +634,12 @@ potter_thresh <- 0.15
         Rank = en_df_test[,test_cols[i]])
       graph_compare$Rank <- sapply(graph_compare$Rank, function(x) 32-x)
     view_ranks <- rbind(graph_base,graph_compare)
-    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 4),".")
+    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 15))
     # create chart
     ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
-      geom_line(aes(color = Species, alpha = 1), size = 1) +
+      geom_line(aes(color = Species, alpha = 1), size = 2) +
       geom_label(aes(label = Abbr),
-                 size = 3,
+                 size = 4,
                  label.padding = unit(0.02, "lines"),
                  label.size = 0.0) +
       MySpecial +
@@ -652,12 +651,12 @@ potter_thresh <- 0.15
         Rank = en_df_test[,test_cols[i]])
       graph_compare$Rank <- sapply(graph_compare$Rank, function(x) 32-x)
     view_ranks <- rbind(graph_base,graph_compare)
-    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 4),".")
+    view_ranks$Abbr <- paste0(substr(view_ranks$Species, 0, 1),".",substr(sub(".* ","",view_ranks$Species), 0, 15))
     # create chart
     ggplot(data = view_ranks, aes(x = Test, y = Rank, group = Species)) +
-      geom_line(aes(color = Species, alpha = 1), size = 1) +
+      geom_line(aes(color = Species, alpha = 1), size = 2) +
       geom_label(aes(label = Abbr),
-                 size = 3,
+                 size = 4,
                  label.padding = unit(0.02, "lines"),
                  label.size = 0.0) +
       MySpecial +

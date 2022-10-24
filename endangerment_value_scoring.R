@@ -1,20 +1,22 @@
+################################################################################
 
 ## endangerment_matrix_calcs-ByGenus.R
-### Authors: Emily Beckman & Sean Hoban
-### Last updated: 10 March 2022
+### Authors: Emily Beckman Bruns & Sean Hoban
+### Last updated: 20 October 2022
 
 ### DESCRIPTION:
-  # This script calculates the total Endangerment Value score for each species.
-  # It also calculates correlation among columns and performs a sensitivity
-  # analysis. All calculations/analyses are performed for each genus, as well as
-  # for all species together.
+  # This script calculates the total endangerment value score for each target
+  # species. It also calculates correlation among columns, performs a
+  # sensitivity analysis, and calculates summary results. All analyses can be
+  # performed for each genus individually, as well as for all species together.
 
 ### FOLDER STRUCTURE:
-  # script_outputs
-    # corr_charts
-    # sensitivity_charts
+  # endangerment_value_calcs
+    # correlation_analysis
+    # sensitivity_analysis
+    # overall_results
 
-### DATA IN:
+### DATA INPUTS:
   # endangerment_matrix_forR.csv
   # str()...
     # species                 : chr  "Malus angustifolia" "Malus armeniacaefolia" "Malus asiatica" "Malus baccata" ...
@@ -26,7 +28,7 @@
     # climate_change_vul_class: chr  "C-C" "N/A" "N/A" "N/A" ...
     # pest_disease_vul_class  : chr  "P-B" "N/A" "N/A" "N/A" ...
 
-### DATA OUT:
+### DATA OUTPUTS:
   # script_outputs folder...
   # For each group (all spp., each genus, or other grouping you've defined):
     # [GROUP]-EndangermentMatrix_SensitivityAnalysis.csv

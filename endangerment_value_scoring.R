@@ -117,6 +117,7 @@ calc_total_score <- function(selected_cols,df,col_wt){
     temp <- 0
     for(j in 1:length(selected_cols)){
       temp <- sum(temp, df[i,selected_cols[j]]*col_wt[selected_cols[j]])
+      #print(paste0(selected_cols[j],", ",col_wt[selected_cols[j]]))
     }
     total_score[i] <- temp*100
   }
@@ -156,11 +157,15 @@ slope_graph_vis <- function(df,base_col,base_label,test_col,test_label){
     Test = base_label,
     Species = en_df_test[,1],
     Rank = en_df_test[,base_col] )
+    # sort the ranks so highest-priority are at the top
+    graph_base$Rank <- sapply(graph_base$Rank, function(x) nrow(df)-x)
   # right panel in visualization (comparison test)
   graph_compare <- data.frame(
     Test = test_label,
     Species = df[,1],
     Rank = df[,test_col] )
+    # sort the ranks so highest-priority are at the top
+    graph_compare$Rank <- sapply(graph_compare$Rank, function(x) nrow(df)-x)
   # bind the two tests together
   view_ranks <- rbind(graph_base,graph_compare)
   # create species name abbreviation for viewing
@@ -428,7 +433,7 @@ for(g in 1:length(groups)){
   # test using 0 instead of NA when no data
    # selected column weights
   col_ev_PotterZero <- c(0, 0, 0, 0.1429, 0.1429, 0.1429, 0.1429, 0.1429, 0, 0, 0.1429, 0.1429)
-  groups[[g]]$wt_zero_potter <-
+  groups[[g]]$ev_zero_potter <-
     calc_total_score(sel_col_PotterZero,groups[[g]],col_ev_PotterZero)
   head(groups[[g]])
 
@@ -513,8 +518,8 @@ for(g in 1:length(groups)){
   ## first let's look at two different methods and compare them
   # select columns we'll use for the analyses
   colnames(groups[[g]])
-  all_ranks <- groups[[g]][,30:46] #!!select rank columns (end with "_r")
-  colnames(all_ranks) <- colnames(groups[[g]][,13:29]) #!!select total score cols
+  all_ranks <- groups[[g]][,31:48] #!!select rank columns (end with "_r")
+  colnames(all_ranks) <- colnames(groups[[g]][,13:30]) #!!select total score cols
   species <- groups[[g]][,1]
   # one way to find highest priority species is to identify those that are most
   #   frequently ranked in a given bunch, say in the top 10
@@ -605,10 +610,10 @@ for(g in 1:length(groups)){
   # create charts using function defined at the beginning of the script;
   #   inputs are: dataframe, column num for 'base' test, label for 'base' test,
   #               column num for comparison test, label for comparison test
-  # select whichever tests you'd like to compare visually
-  slope_graph_vis(en_df_test,30,"*All_Columns",39,"All_Same_Weight")
-  slope_graph_vis(en_df_test,30,"*All_Columns",31,"No_Extinction-risk")
-  slope_graph_vis(en_df_test,30,"*All_Columns",32,"No_Natural-dist-in-US")
+  # !! select whichever tests you'd like to compare visually
+  slope_graph_vis(en_df_test,31,"*All_Columns",40,"All_Same_Weight")
+  slope_graph_vis(en_df_test,31,"*All_Columns",32,"No_Extinction-risk")
+  slope_graph_vis(en_df_test,31,"*All_Columns",33,"No_Natural-dist-in-US")
   # I have not bothered to save these charts because the labels don't show
   #   up in the saved version :(
 
